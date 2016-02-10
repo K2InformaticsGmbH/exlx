@@ -1,7 +1,7 @@
 -module(xlsx_writer).
 -include("xlsx.hrl").
 
--export([create_xlsx/4]).
+-export([create_xlsx/5]).
 
 % @doc
 % * ColumnID can only be one/two uppersace letters (^[A-Z]{1,2}$)
@@ -11,7 +11,8 @@
                              #{ColumnId :: list()|atom()|binary() =>
                                Value :: list()|binary()|integer()|float()|map()}
                             },
-                  Style :: #{Fonts :: fonts => any()}) ->
+                  Style :: #{Fonts :: fonts => any()},
+                  AutoFilterBin :: binary()) ->
 %                  Style :: #{Fonts :: fonts|<<"fonts">> => [#{name|<<"name">> => list()|binary(),
 %                                                     color|<<"color">> => list()|binary(),
 %                                                     size|<<"size">> => float(),
@@ -25,9 +26,15 @@
 %                            xfs|<<"xfs">> => [#{fill|<<"fill">> => integer(),
 %                                                font|<<"font">> => integer()}]}) ->
     {ok, binary()} | {error, term()}.
-create_xlsx(File, SheetTitle, Sheet, Style)
-  when is_binary(SheetTitle), is_map(Sheet), is_map(Style) ->
+create_xlsx(File, SheetTitle, Sheet, Style, AutoFilter)
+  when is_binary(SheetTitle), is_map(Sheet), is_map(Style),
+       is_binary(AutoFilter) ->
     try
+        AutoFilterBin = case byte_size(AutoFilter) > 0 andalso
+                             re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") == nomatch of
+                            true -> error({badfilter,AutoFilter});
+                            _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
+                        end,
         SheetData = to_sheet_data(Sheet),
         StyleData = to_style_data(Style),
         case zip:zip(
@@ -37,7 +44,7 @@ create_xlsx(File, SheetTitle, Sheet, Style)
                 {?WORKBOOK_RELS_PATH, ?WORKBOOK_RELS_BIN},
                 {?STYLES_PATH, ?STYLES_BIN(StyleData)},
                 {?WORKBOOK_PATH, ?WORKBOOK_BIN(SheetTitle)},
-                {?WORKSHEET_PATH, ?WORKSHEET_BIN(SheetData)}
+                {?WORKSHEET_PATH, ?WORKSHEET_BIN(SheetData, AutoFilterBin)}
                ], [memory]) of
             {ok, {File, FileContent}} -> {ok, FileContent};
             {error, Reason} -> {error, Reason}
@@ -71,7 +78,8 @@ to_sheet_data(Sheet) when is_map(Sheet) ->
                                           D -> {D, 0}
                                       end,
                            <<ColXML/binary,
-                             "<c s=\"",(integer_to_binary(Stl))/binary,"\" r=\"",ColBin/binary,RowIdBin/binary,"\"",
+                             "<c s=\"",(integer_to_binary(Stl))/binary,
+                             "\" r=\"",ColBin/binary,RowIdBin/binary,"\"",
                              (case V of
                                  V when is_binary(V) ->
                                      <<" t=\"inlineStr\"><is><t>", V/binary, "</t></is>">>;

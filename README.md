@@ -14,6 +14,6 @@ f(FC).
                   bold => false, italics => true, underline => false, strike => true}],
       fills => [#{type => "solid", fg => "FFFF00FF", bg => "FFFF00FF"},
                 #{type => "solid", fg => "FFFFFF00", bg => "FFFFFF00"}],
-      xfs => [#{fill => 0, font => 0},#{fill => 1, font => 1}]}).
+      xfs => [#{fill => 0, font => 0},#{fill => 1, font => 1}]}, <<"A1:B1">>).
 file:write_file("xlsx_test/test.xlsx", FC).
 ```

@@ -58,14 +58,15 @@
 
 
 -define(WORKSHEET_PATH, "worksheet.xml").
--define(WORKSHEET_BIN(__SheetData),
+-define(WORKSHEET_BIN(__SheetData,__AutoFilter),
         <<?XMLTAG
 "<worksheet xmlns=\""?OXML_SST"\" xmlns:r=\""?OXML_ODR"\" xmlns:mc=\""?OXML_MRC"\">"
     "<sheetViews><sheetView workbookViewId=\"0\"/></sheetViews>"
     "<sheetFormatPr baseColWidth=\"10\" defaultColWidth=\"22.7109375\" defaultRowHeight=\"15\"/>"
     "<sheetData>",
         __SheetData/binary,
-    "</sheetData>"
+    "</sheetData>",
+    __AutoFilter/binary,
 "</worksheet>"
         >>).
 
