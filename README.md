@@ -1,7 +1,7 @@
 # erlxlsx
 SpreadsheetML (XLSX) generator library
 
-## Usage Example
+### Usage Example
 ```erlang
 l(xlsx_writer).
 f(FC).
