@@ -1,12 +1,9 @@
 {application, erlxlsx,
  [
   {description, "SpreadsheetML (XLSX) generator library"},
-  {vsn, "0.0.1"},
+  {vsn, "0.0.2"},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
-  {mod, { erlxlsx, []}},
+  {applications, [kernel, stdlib]},
+  {modules, [erlxlsx, xlsx_writer]},
   {env, []}
  ]}.
