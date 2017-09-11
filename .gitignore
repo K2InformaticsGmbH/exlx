@@ -1,11 +1,8 @@
 .eunit
-deps
-*.o
+_build
 *.beam
 *.plt
 erl_crash.dump
-ebin
-rel/example_project
-.concrete/DEV_MODE
+rebar.lock
 .rebar
 xlsx_test
