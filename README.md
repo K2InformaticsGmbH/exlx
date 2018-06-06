@@ -3,9 +3,9 @@ SpreadsheetML (XLSX) generator library
 
 ### Usage Example
 ```erlang
-l(xlsx_writer).
+l(erlxlsx).
 f(FC).
-{ok, FC} = xlsx_writer:create_xlsx("xlsx_test/test.xlsx", <<"Test">>,
+{ok, FC} = erlxlsx:create("xlsx_test/test.xlsx", <<"Test">>,
     #{1 => #{'A' => #{style => 1, data => "Test"}, 'B' => 1},
       2 => #{'A' => "Test1", 'B' => #{style => 0, data => 2}}},
     #{fonts => [#{name => "Calibri", color => "FF0000FF", size => 12.0,
