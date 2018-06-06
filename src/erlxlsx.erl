@@ -6,7 +6,7 @@
 % @doc
 % * see create/5
 create(File, SheetTitle, Sheet, Style) ->
-    create(File, SheetTitle, Sheet, Style, <<>>).
+    create(File, SheetTitle, Sheet, Style, #{}).
 
 % @doc
 % * ColumnID can only be one/two uppersace letters (^[A-Z]{1,2}$)
@@ -31,29 +31,34 @@ create(File, SheetTitle, Sheet, Style) ->
 %                            xfs|<<"xfs">> => [#{fill|<<"fill">> => integer(),
 %                                                font|<<"font">> => integer()}]}) ->
     {ok, binary()} | {error, term()}.
-create(File, SheetTitle, Sheet, Style, AutoFilter)
-  when is_binary(SheetTitle), is_map(Sheet), is_map(Style),
-       is_binary(AutoFilter) ->
+create(_, _, _, _, #{autoFilter := AF}) when not is_binary(AF) ->
+    error(bad_autofilter);
+create(_, _, _, _, #{hyperlinks := H}) when not is_map(H) ->
+    error(bad_hyperlinks);
+create(File, SheetTitle, Sheet, Style, Opts)
+  when is_binary(SheetTitle), is_map(Sheet), is_map(Style), is_map(Opts) ->
     try
-        AutoFilterBin =
-            if
-                byte_size(AutoFilter) == 0 -> <<>>;
-                byte_size(AutoFilter) > 0 ->
-                case re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") of
-                    nomatch -> error({badfilter,AutoFilter});
-                    _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
-                end
-            end,
         SheetData = to_sheet_data(Sheet),
         StyleData = to_style_data(Style),
+        AutoFilterData = autofilter(Opts),
+        {RelLinks, Links} = hyperlink(Opts),
+        HyperLinks =
+            if byte_size(Links) > 0 ->
+                <<"<hyperlinks>",Links/binary,"</hyperlinks>">>;
+                true -> <<>>
+            end,
         case zip:zip(
                File,
                [{?CONTENT_TYPES_PATH, ?CONTENT_TYPES_BIN},
                 {?DOT_RELS_PATH, ?DOT_RELS_BIN},
-                {?WORKBOOK_RELS_PATH, ?WORKBOOK_RELS_BIN},
-                {?STYLES_PATH, ?STYLES_BIN(StyleData)},
+                {?WORKBOOK_RELS_PATH, ?WORKBOOK_RELS_BIN}]++
+                if byte_size(RelLinks) > 0 ->
+                    [{?WORKSHEET_RELS_PATH, ?WORKSHEET_RELS_BIN(RelLinks)}];
+                    true -> []
+                end ++
+               [{?STYLES_PATH, ?STYLES_BIN(StyleData)},
                 {?WORKBOOK_PATH, ?WORKBOOK_BIN(SheetTitle)},
-                {?WORKSHEET_PATH, ?WORKSHEET_BIN(SheetData, AutoFilterBin)}
+                {?WORKSHEET_PATH, ?WORKSHEET_BIN(SheetData, <<AutoFilterData/binary, HyperLinks/binary>>)}
                ], [memory]) of
             {ok, {File, FileContent}} -> {ok, FileContent};
             {error, Reason} -> {error, Reason}
@@ -61,6 +66,44 @@ create(File, SheetTitle, Sheet, Style, AutoFilter)
     catch
         error:E -> {error,E}
     end.
+
+-spec autofilter(map()) -> binary().
+autofilter(#{autoFilter := AutoFilter}) ->
+    if
+        byte_size(AutoFilter) == 0 -> <<>>;
+        byte_size(AutoFilter) > 0 ->
+            case re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") of
+                nomatch -> error({badfilter,AutoFilter});
+                _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
+            end
+    end;
+autofilter(_) -> <<>>.
+
+-spec hyperlink(map()) -> {binary(), binary()}.
+hyperlink(#{hyperlinks := HyperLinks}) ->
+    maps:fold(
+        fun(R, RowMap, Buf) ->
+            maps:fold(
+                fun(C, Link, IBuf) ->
+                    hyperlink_i(R, C, Link, IBuf)
+                end, Buf, RowMap
+            )
+        end, {<<>>, <<>>}, HyperLinks
+    );
+hyperlink(_) -> {<<>>, <<>>}.
+
+hyperlink_i(R, C, Link, {Rel, Data}) when is_integer(R), is_atom(C) ->
+    Cell = list_to_binary(io_lib:format("~s~p", [atom_to_list(C), R])),
+    RId = list_to_binary(io_lib:format("rId~s", [Cell])),
+    HLink = list_to_binary(io_lib:format("~s", [Link])),
+    {<< Rel/binary,
+        "<Relationship Id=\"",RId/binary,"\""
+                     " Type=\""?OXML_ODR"/hyperlink\""
+                     " Target=\"",HLink/binary,"\""
+                     " TargetMode=\"External\" />"
+     >>,
+     << Data/binary,
+        "<hyperlink ref=\"",Cell/binary,"\" r:id=\"",RId/binary,"\"/>">>}.
 
 -spec to_sheet_data(map()) -> binary().
 to_sheet_data(Sheet) when is_map(Sheet) ->

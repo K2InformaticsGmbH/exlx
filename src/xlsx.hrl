@@ -56,6 +56,14 @@
 "</Relationships>"
         >>).
 
+-define(WORKSHEET_RELS_PATH, "_rels/worksheet.xml.rels").
+-define(WORKSHEET_RELS_BIN(__Relationships),
+        <<?XMLTAG
+"<Relationships xmlns=\""?OXML_PKG"/relationships\">",
+%        "<Relationship Id=\"rIdA3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"http://www.k2informatics.ch/\" TargetMode=\"External\" />
+    __Relationships/binary,
+"</Relationships>"
+        >>).
 
 -define(WORKSHEET_PATH, "worksheet.xml").
 -define(WORKSHEET_BIN(__SheetData,__AutoFilter),
