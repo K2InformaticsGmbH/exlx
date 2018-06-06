@@ -35,11 +35,15 @@ create(File, SheetTitle, Sheet, Style, AutoFilter)
   when is_binary(SheetTitle), is_map(Sheet), is_map(Style),
        is_binary(AutoFilter) ->
     try
-        AutoFilterBin = case byte_size(AutoFilter) > 0 andalso
-                             re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") == nomatch of
-                            true -> error({badfilter,AutoFilter});
-                            _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
-                        end,
+        AutoFilterBin =
+            if
+                byte_size(AutoFilter) == 0 -> <<>>;
+                byte_size(AutoFilter) > 0 ->
+                case re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") of
+                    nomatch -> error({badfilter,AutoFilter});
+                    _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
+                end
+            end,
         SheetData = to_sheet_data(Sheet),
         StyleData = to_style_data(Style),
         case zip:zip(
