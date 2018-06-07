@@ -1,36 +1,238 @@
 -module(erlxlsx).
+-include("xlsx.hrl").
 
--behaviour(application).
--behaviour(supervisor).
+-export([create/4, create/5]).
 
-%% Shell APIs
--export([start/0, stop/0]).
+% @doc
+% * see create/5
+create(File, SheetTitle, Sheet, Style) ->
+    create(File, SheetTitle, Sheet, Style, #{}).
 
-%% Application callbacks
--export([start/2, stop/1]).
+% @doc
+% * ColumnID can only be one/two uppersace letters (^[A-Z]{1,2}$)
+-spec create(File :: file:name(),
+                  SheetTitle :: binary(),
+                  Sheet :: #{RowId :: integer() =>
+                             #{ColumnId :: list()|atom()|binary() =>
+                               Value :: list()|binary()|integer()|float()|map()}
+                            },
+                  Style :: #{Fonts :: fonts => any()},
+                  AutoFilterBin :: binary()) ->
+%                  Style :: #{Fonts :: fonts|<<"fonts">> => [#{name|<<"name">> => list()|binary(),
+%                                                     color|<<"color">> => list()|binary(),
+%                                                     size|<<"size">> => float(),
+%                                                     bold|<<"bold">> => true|false,
+%                                                     italics|<<"italics">> => true|false,
+%                                                     underline|<<"underline">> => true|false,
+%                                                     strike|<<"strike">> => true|false}],
+%                            fills|<<"fills">> => [#{type|<<"type">> => list()|binary(),
+%                                                    fg|<<"fg">> => list()|binary(),
+%                                                    bg|<<"bg">> => list()|binary()}],
+%                            xfs|<<"xfs">> => [#{fill|<<"fill">> => integer(),
+%                                                font|<<"font">> => integer()}]}) ->
+    {ok, binary()} | {error, term()}.
+create(_, _, _, _, #{autoFilter := AF}) when not is_binary(AF) ->
+    error(bad_autofilter);
+create(_, _, _, _, #{hyperlinks := H}) when not is_map(H) ->
+    error(bad_hyperlinks);
+create(File, SheetTitle, Sheet, Style, Opts)
+  when is_binary(SheetTitle), is_map(Sheet), is_map(Style), is_map(Opts) ->
+    try
+        SheetData = to_sheet_data(Sheet),
+        StyleData = to_style_data(Style),
+        AutoFilterData = autofilter(Opts),
+        {RelLinks, Links} = hyperlink(Opts),
+        HyperLinks =
+            if byte_size(Links) > 0 ->
+                <<"<hyperlinks>",Links/binary,"</hyperlinks>">>;
+                true -> <<>>
+            end,
+        case zip:zip(
+               File,
+               [{?CONTENT_TYPES_PATH, ?CONTENT_TYPES_BIN},
+                {?DOT_RELS_PATH, ?DOT_RELS_BIN},
+                {?WORKBOOK_RELS_PATH, ?WORKBOOK_RELS_BIN}]++
+                if byte_size(RelLinks) > 0 ->
+                    [{?WORKSHEET_RELS_PATH, ?WORKSHEET_RELS_BIN(RelLinks)}];
+                    true -> []
+                end ++
+               [{?STYLES_PATH, ?STYLES_BIN(StyleData)},
+                {?WORKBOOK_PATH, ?WORKBOOK_BIN(SheetTitle)},
+                {?WORKSHEET_PATH, ?WORKSHEET_BIN(SheetData, <<AutoFilterData/binary, HyperLinks/binary>>)}
+               ], [memory]) of
+            {ok, {File, FileContent}} -> {ok, FileContent};
+            {error, Reason} -> {error, Reason}
+        end
+    catch
+        error:E -> {error,E}
+    end.
 
-%% Supervisor callbacks
--export([init/1]).
+-spec autofilter(map()) -> binary().
+autofilter(#{autoFilter := AutoFilter}) ->
+    if
+        byte_size(AutoFilter) == 0 -> <<>>;
+        byte_size(AutoFilter) > 0 ->
+            case re:run(AutoFilter, "^[A-Z]+[0-6]+:[A-Z]+[0-6]+$") of
+                nomatch -> error({badfilter,AutoFilter});
+                _ -> <<"<autoFilter ref=\"",AutoFilter/binary,"\"/>">>
+            end
+    end;
+autofilter(_) -> <<>>.
 
-%% ===================================================================
-%% Shell APIs
-%% ===================================================================
+-spec hyperlink(map()) -> {binary(), binary()}.
+hyperlink(#{hyperlinks := HyperLinks}) ->
+    maps:fold(
+        fun(R, RowMap, Buf) ->
+            maps:fold(
+                fun(C, Link, IBuf) ->
+                    hyperlink_i(R, C, Link, IBuf)
+                end, Buf, RowMap
+            )
+        end, {<<>>, <<>>}, HyperLinks
+    );
+hyperlink(_) -> {<<>>, <<>>}.
 
-start() -> application:start(?MODULE).
-stop() -> application:stop(?MODULE).
+hyperlink_i(R, C, Link, {Rel, Data}) when is_integer(R), is_atom(C) ->
+    Cell = list_to_binary(io_lib:format("~s~p", [atom_to_list(C), R])),
+    RId = list_to_binary(io_lib:format("rId~s", [Cell])),
+    HLink = list_to_binary(io_lib:format("~s", [Link])),
+    {<< Rel/binary,
+        "<Relationship Id=\"",RId/binary,"\""
+                     " Type=\""?OXML_ODR"/hyperlink\""
+                     " Target=\"",HLink/binary,"\""
+                     " TargetMode=\"External\" />"
+     >>,
+     << Data/binary,
+        "<hyperlink ref=\"",Cell/binary,"\" r:id=\"",RId/binary,"\"/>">>}.
 
-%% ===================================================================
-%% Application callbacks
-%% ===================================================================
+-spec to_sheet_data(map()) -> binary().
+to_sheet_data(Sheet) when is_map(Sheet) ->
+    lists:foldl(
+      fun(RowId, XML) ->
+              RowIdBin = integer_to_binary(RowId),
+              Row = maps:get(RowId, Sheet),
+              <<XML/binary, "<row r=\"",RowIdBin/binary,"\">",
+                (lists:foldl(
+                   fun(Col, ColXML) ->
+                           ColBin = if is_atom(Col) -> atom_to_binary(Col, utf8);
+                                       is_list(Col) -> list_to_binary(Col);
+                                       is_binary(Col) -> Col;
+                                       true -> error({badcolumn, Col})
+                                    end,
+                           case re:run(ColBin,"^[A-Z]{1,2}$") /= nomatch of
+                               true -> ok;
+                               _ -> error({badcolumnid, Col})
+                           end,
+                           Val = maps:get(Col,Row),
+                           {V, Stl} = case Val of
+                                          #{style := S, data := D} -> {D, S+1};
+                                          #{<<"style">> := S, <<"data">> := D} -> {D, S+1};
+                                          D -> {D, 0}
+                                      end,
+                           <<ColXML/binary,
+                             "<c s=\"",(integer_to_binary(Stl))/binary,
+                             "\" r=\"",ColBin/binary,RowIdBin/binary,"\"",
+                             (case V of
+                                 V when is_binary(V) ->
+                                     <<" t=\"inlineStr\"><is><t>", V/binary, "</t></is>">>;
+                                 V when is_list(V) ->
+                                     <<" t=\"inlineStr\"><is><t>", (list_to_binary(V))/binary, "</t></is>">>;
+                                 V when is_integer(V) -> <<"><v>", (integer_to_binary(V))/binary, "</v>">>;
+                                 V when is_float(V) -> <<"><v>", (float_to_binary(V))/binary, "</v>">>;
+                                 V -> error({badvalue, V})
+                              end)/binary,
+                             "</c>">>
+                   end, <<>>,
+                   lists:usort(maps:keys(Row))))/binary,
+                "</row>">>
+      end, <<>>, lists:usort(maps:keys(Sheet))).
 
-start(_StartType, _StartArgs) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+-define(MAPSGET(__K,__M,__D), maps:get(<<??__K>>, __M, maps:get(??__K, __M, maps:get(__K, __M, __D)))).
+to_style_data(Style) ->
+    FontBins = lists:foldl(
+                 fun(Font, Fonts) when is_map(Font) ->
+                         [<<"<font>",
+                            (list_to_binary(
+                               [case ?MAPSGET(bold,Font,false) == true of
+                                    true -> "<b/>";
+                                    _ -> ""
+                                end,
+                                case ?MAPSGET(italics,Font,false) == true of
+                                    true -> "<i/>";
+                                    _ -> ""
+                                end,
+                                case ?MAPSGET(underline,Font,false) == true of
+                                    true -> "<u/>";
+                                    _ -> ""
+                                end,
+                                case ?MAPSGET(strike,Font,false) == true of
+                                    true -> "<strike/>";
+                                    _ -> ""
+                                end,
+                                case ?MAPSGET(size,Font,none) of
+                                    none -> "";
+                                    Size -> ["<sz val=\"",float_to_list(Size,[{decimals,2},compact]),"\"/>"]
+                                end,
+                                case ?MAPSGET(color,Font,none) of
+                                    none -> "";
+                                    Color -> ["<color rgb=\"",Color,"\"/>"]
+                                end,
+                                case ?MAPSGET(name,Font,none) of
+                                    none -> "";
+                                    Name -> ["<name val=\"",Name,"\"/>"]
+                                end]))/binary,
+                            "</font>">> | Fonts]
+                 end,
+                 [], ?MAPSGET(fonts, Style, [])),
+    FontsCount = integer_to_binary(length(FontBins)+1),
+    FillBins = lists:foldl(
+                 fun(Fill, Fills) when is_map(Fill) ->
+                         [<<"<fill><patternFill patternType=\"",
+                            (list_to_binary(
+                               [case ?MAPSGET(type,Fill,none) of
+                                    none -> "solid";
+                                    Type -> Type
+                                end,"\"><fgColor rgb=\"",
+                                case ?MAPSGET(fg,Fill,none) of
+                                    none -> "FFFFFFFF";
+                                    FgCol -> FgCol
+                                end,"\"/><bgColor rgb=\"",
+                                case ?MAPSGET(bg,Fill,none) of
+                                    none -> "FFFFFFFF";
+                                    FgCol -> FgCol
+                                end,"\"/>"]))/binary,
+                            "</patternFill></fill>">> | Fills]
+                 end,
+                 [], ?MAPSGET(fills,Style,[])),
+    FillsCount = integer_to_binary(length(FillBins)+2),
+    XfsBins = lists:foldl(
+                 fun(Xf, Xfs) when is_map(Xf) ->
+                         [<<"<xf fillId=\"",
+                            (list_to_binary(
+                               [case ?MAPSGET(fill,Xf,none) of
+                                    none -> "0";
+                                    FillId -> integer_to_list(FillId+2)
+                                end,"\" fontId=\"",
+                                case ?MAPSGET(font,Xf,none) of
+                                    none -> "0";
+                                    FontId -> integer_to_list(FontId+1)
+                                end,"\""]))/binary,
+                            " xfId=\"0\" applyFill=\"1\"/>">> | Xfs]
+                 end,
+                 [], ?MAPSGET(xfs,Style,[])),
+    XfsCount = integer_to_binary(length(XfsBins)+1),
+    
+    <<"<fonts count=\"",FontsCount/binary,"\"><font/>",
+      (list_to_binary(lists:reverse(FontBins)))/binary,"</fonts>"
 
-stop(_State) -> ok.
+      "<fills count=\"",FillsCount/binary,"\"><fill/>"
+      "<fill><patternFill patternType=\"lightGray\"/></fill>",
+      (list_to_binary(lists:reverse(FillBins)))/binary,
+      "</fills>"
 
-%% ===================================================================
-%% Supervisor callbacks
-%% ===================================================================
+      "<borders count=\"1\"><border/></borders>"
+      "<cellStyleXfs count=\"1\"><xf/></cellStyleXfs>"
 
-init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+      "<cellXfs count=\"",XfsCount/binary,"\"><xf/>",
+      (list_to_binary(lists:reverse(XfsBins)))/binary,
+      "</cellXfs>">>.
