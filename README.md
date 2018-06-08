@@ -7,7 +7,7 @@ f().
 File = "xlsx_test/test.xlsx".
 Sheet = #{1 => #{'A' => #{style => 1, data => "Test"}, 'B' => 1},
           2 => #{'A' => "Test1", 'B' => #{style => 0, data => 2}},
-          3 => #{'A' => #{style => 2, data => "K2 Home"}}}.
+          3 => #{'A' => #{style => 2, data => "K2 Home", href => "http://www.k2informatics.ch"}}}.
 Style = #{fonts => [#{name => "Calibri", color => "FF0000FF", size => 12.0,
                       bold => true, italics => true, underline => true, strike => true},
                     #{name => "Calibri", color => "FF0000FF", size => 12.0,
@@ -18,18 +18,11 @@ Style = #{fonts => [#{name => "Calibri", color => "FF0000FF", size => 12.0,
                     #{type => "solid", fg => "FFFFFF00", bg => "FFFFFF00"},
                     #{type => "solid", fg => "FFFFFFFF", bg => "FFFFFFFF"}],
           xfs => [#{fill => 0, font => 0},#{fill => 1, font => 1},#{font => 2}]}.
-Hyperlinks = #{3 => #{'A' => "http://www.k2informatics.ch"}}.
 
-% with auto filter and hyperlink
-{ok, FC} = erlxlsx:create(File, <<"Test">>, Sheet, Style, #{autoFilter => <<"A1:B1">>, hyperlinks =>  Hyperlinks}).
-
-% with only auto filter
+% with auto filter
 {ok, FC} = erlxlsx:create(File, <<"Test">>, Sheet, Style, #{autoFilter => <<"A1:B1">>}).
 
-% with only hyperlink
-{ok, FC} = erlxlsx:create(File, <<"Test">>, Sheet, Style, #{hyperlinks =  Hyperlinks}).
-
-% without auto filter or hyperlink
+% without auto filter
 {ok, FC} = erlxlsx:create(File, <<"Test">>, Sheet, Style).
 
 file:write_file(File, FC).
