@@ -1,5 +1,5 @@
--ifndef(_XLX_HRL_).
--define(_XLX_HRL_, true).
+-ifndef(_XLSX_HRL_).
+-define(_XLSX_HRL_, true).
 
 -define(XMLTAG, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>").
 
@@ -82,4 +82,4 @@
 "</styleSheet>"
 >>).
 
--endif. %% _XLX_HRL_
+-endif. %% _XLSX_HRL_
