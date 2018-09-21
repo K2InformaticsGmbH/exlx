@@ -1,4 +1,4 @@
--module(erlxlsx).
+-module(exlx).
 -include("xlx.hrl").
 
 -export([unpack/1, unpack/2, pack/1, write_xlx/2, unpack_part/5]).
@@ -66,3 +66,10 @@ pack(ContentMap) ->
 write_xlx(Target, Content) ->
     {ok, Bin} = pack(Content),
     file:write_file(Target, Bin).
+
+-ifdef(CONSOLE).
+
+f().
+exlx:unpack("xlsx_test/SBSREP111a.xlsm").
+
+-endif.

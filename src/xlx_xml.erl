@@ -31,11 +31,9 @@ pe({startElement, Uri, LocalName, {Prefix, LocalName}, Attributes}, _, S) ->
 	]) | S];
 pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 	[#{uri := Uri, name := LocalName}] = S) ->
-    io:format(user, "~p:~p endElement ~s~n", [?MODULE, ?LINE, LocalName]),
 	S;
 pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 	[#{uri := Uri, name := LocalName} = Elm, Prev | S]) ->
-    io:format(user, "~p:~p endElement ~s~n", [?MODULE, ?LINE, LocalName]),
 	[Prev#{elms =>
 		case Prev of
 			#{elms := Elms} -> Elms ++ [Elm];
@@ -43,8 +41,7 @@ pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 		end} | S];
 % pe({characters,	_Chrs}, 				_, S) -> S;
 pe(Evt, _, S) ->
-    io:format(user, "~p : ~p~n", [Evt, S]),
-    S.
+    throw({unhandled, Evt, S}).
 
 attrs([]) -> #{};
 attrs(Attributes) ->
@@ -69,3 +66,11 @@ maps_merge([Map | Maps], Acc) ->
 					 (_, _, M) -> M
 				  end, Acc, Map)
 	).
+
+-ifdef(CONSOLE).
+
+f().
+{ok, Bin} = file:read_file("xlsx_test/SBSREP111a/_rels/.rels").
+xlx_xml:parse(Bin).
+
+-endif.
