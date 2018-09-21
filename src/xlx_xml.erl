@@ -50,11 +50,15 @@ attrs([]) -> #{};
 attrs(Attributes) ->
 	attrs(Attributes, #{}).
 attrs([], Attr) -> #{attrs => Attr};
+attrs([{[], [], AttributeName, Value} | Attrs], Attr) ->
+	attrs(Attrs, Attr#{AttributeName => Value});
 attrs([{Uri, Prefix, AttributeName, Value} | Attrs], Attr) ->
-	attrs(Attrs,
+	attrs(
+		Attrs,
 		Attr#{AttributeName => maps_merge([
 			#{uri => Uri}, #{prefix => Prefix, val => Value}
-		])}).
+		])}
+	).
 
 maps_merge(Maps) -> maps_merge(Maps, #{}).
 maps_merge([], Map) -> Map;
