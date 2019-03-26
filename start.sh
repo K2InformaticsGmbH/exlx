@@ -9,17 +9,16 @@ fi
 
 # PATHS
 paths="-pa"
-paths=$paths" $PWD/ebin"
-paths=$paths" $PWD/deps/*/ebin"
+paths=$paths" _build/default/lib/*/ebin"
 
 start_opts="$paths"
 
 # DDERL start options
 echo "------------------------------------------"
-echo "Starting erlxlsx (Opts)"
+echo "Starting exlx (Opts)"
 echo "------------------------------------------"
 echo "EBIN Path : $paths"
 echo "------------------------------------------"
 
 # Starting dderl
-$exename $start_opts -s erlxlsx
+$exename $start_opts
