@@ -20,6 +20,10 @@ unpack(XlxFile, XlxBin) ->
             [], {ZipFile, XlxBin}
         ) of
         {ok, ProducerPids} ->
+            io:format(
+                "~p: processing ~p parts in parallel~n",
+                [{?MODULE, ?FUNCTION_NAME, ?LINE}, length(ProducerPids)]
+            ),
             #{file => XlxFile,
               content => collect(ProducerPids, #{})};
         Error -> Error
@@ -39,14 +43,24 @@ collect([], Map) -> Map;
 collect(ProducerPids, Map) ->
     receive
         {Pid, FileInArchive, Content} ->
+            io:format(
+                "~p: processed ~s, remaining ~p~n",
+                [{?MODULE, ?FUNCTION_NAME, ?LINE},
+                 FileInArchive, length(ProducerPids)]
+            ),
             collect(
                 ProducerPids -- [Pid],
                 Map#{FileInArchive => Content}
             )
     after 1000 ->
-        collect(
-            [P || P <- ProducerPids, catch is_process_alive(P) == true], Map
-        )
+        RemainingProducerPids =
+            [P || P <- ProducerPids, catch is_process_alive(P) == true],
+        io:format("~p: worker timeout, remaining ~p, lost ~p~n",
+            [{?MODULE, ?FUNCTION_NAME, ?LINE},
+             length(RemainingProducerPids),
+             length(ProducerPids) - length(RemainingProducerPids)]
+        ),
+        collect(RemainingProducerPids, Map)
     end.
 
 pack(#{content := ContentMap}) -> pack(ContentMap);
