@@ -3,17 +3,14 @@
 -export([parse/1]).
 
 parse(XmlBin) ->
-    case
-		xmerl_sax_parser:stream(
-			XmlBin, [{event_state, []}, {event_fun, fun pe/3},
-					 {continuation_fun, fun contd/1}]
-		)
-	of
+    case xmerl_sax_parser:stream(
+		XmlBin,
+		[{event_state, []}, % empty Stack as State
+			{event_fun, fun pe/3}]
+	) of
         {ok, RespMap, <<>>} -> RespMap;
         Error -> error(Error)
     end.
-
-contd(C) -> {<<>>, C}.
 
 % ignores
 pe(startDocument,            _, S) -> S;
@@ -29,9 +26,15 @@ pe({startElement, Uri, LocalName, {Prefix, LocalName}, Attributes}, _, S) ->
 		#{uri => Uri},
 		attrs(Attributes)
 	]) | S];
+% end of top level element : State Stack NOP
 pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 	[#{uri := Uri, name := LocalName}] = S) ->
 	S;
+% end of intermediate level element
+% Elm 		= pop(State-Stack)
+% Parent 	= pop(State-Stack)
+% push(Parent, 		Elm)
+% push(State-Stack, Parent)
 pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 	[#{uri := Uri, name := LocalName} = Elm, Prev | S]) ->
 	[Prev#{elms =>
@@ -39,9 +42,17 @@ pe({endElement, Uri, LocalName, {_Prefix, LocalName}}, _,
 			#{elms := Elms} -> Elms ++ [Elm];
 			_ -> [Elm]
 		end} | S];
-% pe({characters,	_Chrs}, 				_, S) -> S;
-pe(Evt, _, S) ->
-    throw({unhandled, Evt, S}).
+pe({characters, Chrs}, _, [Elm|Rest]) ->
+	[Elm#{characters => Chrs} | Rest];
+pe(Evt, _Location, State) ->
+	Error =
+		list_to_binary(
+			io_lib:format(
+				"~p ~p State = ~p",
+				[{?MODULE,?FUNCTION_NAME,?LINE}, Evt, State]
+			)
+		),
+	throw({unhandled, Error}).
 
 attrs([]) -> #{};
 attrs(Attributes) ->
